@@ -32,10 +32,10 @@ defmodule IMAP.Tokenizer do
   # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
   # SUCH DAMAGE.
 
-  defstruct [token_state: {"", nil}, parse_state: {[], []}]
+  defstruct token_state: {"", nil}, parse_state: {[], []}
 
   def decode_line(data) do
-    decode_line({data, nil}, {[],[]})
+    decode_line({data, nil}, {[], []})
   end
 
   def decode_line({data, state}, {buffer, acc}) do
@@ -84,25 +84,25 @@ defmodule IMAP.Tokenizer do
   end
 
   def pop_token("(" <> rest, nil) do
-    {:'(', rest, nil}
+    {:"(", rest, nil}
   end
 
   def pop_token(")" <> rest, nil) do
-    {:')', rest, nil}
+    {:")", rest, nil}
   end
 
   def pop_token("[" <> rest, nil) do
-    {:'[', rest, nil}
+    {:"[", rest, nil}
   end
 
   def pop_token("]" <> rest, nil) do
-    {:']', rest, nil}
+    {:"]", rest, nil}
   end
 
   # numbers
 
   def pop_token(<<c, _rest::binary>> = data, {:number, acc})
-  when c in [?\s, ?(, ?), ?[, ?]] do
+      when c in [?\s, ?(, ?), ?[, ?]] do
     {:erlang.binary_to_integer(acc), data, nil}
   end
 
@@ -115,24 +115,24 @@ defmodule IMAP.Tokenizer do
   end
 
   def pop_token(<<d, rest::binary>>, {:number, acc})
-  when d >= 48 and d < 58 do
+      when d >= 48 and d < 58 do
     pop_token(rest, {:number, <<acc::binary, d>>})
   end
 
   def pop_token(<<d, rest::binary>>, nil)
-  when d >= 48 and d < 58 do
+      when d >= 48 and d < 58 do
     pop_token(rest, {:number, <<d>>})
   end
 
   def pop_token(<<c, rest::binary>>, {:number, acc})
-  when c >= 35 and c < 123 do
+      when c >= 35 and c < 123 do
     pop_token(rest, {:atom, <<acc::binary, c>>})
   end
 
   # atom
 
   def pop_token(<<c, _rest::binary>> = data, {:atom, acc})
-  when c in [?\s, ?(, ?), ?[, ?]] do
+      when c in [?\s, ?(, ?), ?[, ?]] do
     {acc, data, nil}
   end
 
@@ -141,12 +141,12 @@ defmodule IMAP.Tokenizer do
   end
 
   def pop_token(<<c, rest::binary>>, nil)
-  when c >= 35 and c < 123 do
+      when c >= 35 and c < 123 do
     pop_token(rest, {:atom, <<c>>})
   end
 
   def pop_token(<<c, rest::binary>>, {:atom, acc})
-  when c >= 35 and c <123 do
+      when c >= 35 and c < 123 do
     pop_token(rest, {:atom, <<acc::binary, c>>})
   end
 
@@ -161,15 +161,16 @@ defmodule IMAP.Tokenizer do
   end
 
   def pop_token(<<d, rest::binary>>, {:literal, acc})
-  when d >= 48 and d < 58 do
+      when d >= 48 and d < 58 do
     pop_token(rest, {:literal, <<acc::binary, d>>})
   end
 
   def pop_token(bin, {:literal, bytes, acc})
-  when is_integer(bytes) do
+      when is_integer(bytes) do
     case bin do
       <<literal::binary-size(bytes), rest::binary>> ->
         {{:string, <<acc::binary, literal::binary>>}, rest, nil}
+
       _ ->
         pop_token("", {:literal, bytes - byte_size(bin), <<acc::binary, bin::binary>>})
     end
@@ -211,16 +212,17 @@ defmodule IMAP.Tokenizer do
     {:lists.reverse(acc), rest, []}
   end
 
-  def parse([:'(' | rest] = tokens, acc) do
+  def parse([:"(" | rest] = tokens, acc) do
     case parse(rest) do
       {nil, _, _} ->
         {nil, tokens, acc}
+
       {list, rest, []} ->
         parse(rest, [list | acc])
     end
   end
 
-  def parse([:')' | rest], acc) do
+  def parse([:")" | rest], acc) do
     {:lists.reverse(acc), rest, []}
   end
 

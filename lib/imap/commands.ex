@@ -77,12 +77,12 @@ defmodule IMAP.Commands do
   end
 
   def cmd_to_list({cmd, mailbox})
-  when cmd in [:select, :examine, :delete, :subscribe, :unsubscribe] do
+      when cmd in [:select, :examine, :delete, :subscribe, :unsubscribe] do
     [atom_to_cmd(cmd), quote_wrap_binary(mailbox)]
   end
 
   def cmd_to_list(cmd)
-  when cmd in [:noop, :idle, :done, :close, :expunge, :logout, :capability] do
+      when cmd in [:noop, :idle, :done, :close, :expunge, :logout, :capability] do
     [atom_to_cmd(cmd)]
   end
 
@@ -103,7 +103,7 @@ defmodule IMAP.Commands do
   end
 
   def seqset_to_list([head | tail]) do
-    Enum.reduce(tail, head, fn(id, acc) ->
+    Enum.reduce(tail, head, fn id, acc ->
       <<acc::binary, ?,, :erlang.integer_to_binary(id)::binary>>
     end)
   end

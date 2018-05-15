@@ -39,13 +39,13 @@ defmodule IMAP do
 
   require Logger
 
-  defstruct [socket: nil,
-             connspec: nil,
-             +: false,
-             opts: [],
-             tag: 0,
-             tokenizer: %Tokenizer{},
-             cmds: {0, nil}]
+  defstruct socket: nil,
+            connspec: nil,
+            +: false,
+            opts: [],
+            tag: 0,
+            tokenizer: %Tokenizer{},
+            cmds: {0, nil}
 
   def start_link([connspec, opts]) do
     {name, opts} = Keyword.pop(opts, :name)
@@ -73,21 +73,20 @@ defmodule IMAP do
 
   def handle_cast({:cmd, cmd, _}, %{+: true, socket: socket} = state) do
     :ok = :ssl.send(socket, cmd_to_data(cmd))
+
     {:noreply, %{state | +: false}}
   end
 
-  def handle_cast({:cmd, cmd, _} = cmd_tup,
-    %{cmds: cmds, socket: socket, tag: tag} = state) do
-
+  def handle_cast({:cmd, cmd, _} = cmd_tup, %{cmds: cmds, socket: socket, tag: tag} = state) do
     ctag = make_tag(tag)
     :ok  = :ssl.send(socket, [ctag, " " | cmd_to_data(cmd)])
     cmds = put_cmd(ctag, cmd_tup, cmds)
 
-    {:noreply, %{state | cmds: cmds, tag: tag+1}}
+    {:noreply, %{state | cmds: cmds, tag: tag + 1}}
   end
 
   def handle_cast({:lifecycle, :finished}, %{opts: opts} = state) do
-    post_init_callback =  Keyword.get(opts, :post_init_callback, fn(x) -> x end)
+    post_init_callback = Keyword.get(opts, :post_init_callback, fn x -> x end)
 
     {:noreply, post_init_callback.(state)}
   end
@@ -100,6 +99,7 @@ defmodule IMAP do
     Logger.debug(fn ->
       "unhandled cast: #{inspect(request)}"
     end)
+
     {:noreply, state}
   end
 
@@ -107,8 +107,7 @@ defmodule IMAP do
     <<?C, :erlang.integer_to_binary(tag)::binary>>
   end
 
-  def handle_info({:ssl, socket, data},
-    %{socket: socket, tokenizer: tokenizer} = state) do
+  def handle_info({:ssl, socket, data}, %{socket: socket, tokenizer: tokenizer} = state) do
     %{token_state: {buffer, acc}} = tokenizer
 
     buffer    = <<buffer::binary, data::binary>>
@@ -141,18 +140,19 @@ defmodule IMAP do
     Logger.debug(fn ->
       "unhandled message: #{inspect(msg)}"
     end)
+
     {:noreply, state}
   end
 
   def dispatch_to(ref) do
-    fn(message) ->
+    fn message ->
       send(ref, message)
       :ok
     end
   end
 
   def cast(server, cmd) do
-    cast(server, cmd, [dispatch: dispatch_to(self())])
+    cast(server, cmd, dispatch: dispatch_to(self()))
   end
 
   def cast(server, cmd, opts) do
@@ -160,7 +160,7 @@ defmodule IMAP do
   end
 
   def call(server, cmd) do
-    call(server, cmd, [dispatch: dispatch_to(self())])
+    call(server, cmd, dispatch: dispatch_to(self()))
   end
 
   def call(server, cmd, opts, timeout \\ 5000) do
@@ -181,12 +181,16 @@ defmodule IMAP do
     receive do
       {:+, resp} ->
         {:+, Enum.reverse([{:+, resp} | responses])}
+
       {:*, resp} ->
         recv(timeout, ref, [{:*, resp} | responses])
+
       {:OK, resp} ->
         {:ok, {{:OK, resp}, Enum.reverse(responses)}}
+
       {at, resp} when at in [:NO, :BAD] ->
         {:error, {{at, resp}, Enum.reverse(responses)}}
+
       {:DOWN, ^ref, :process, _, reason} ->
         {:error, {{:down, reason}, Enum.reverse(responses)}}
     after
@@ -212,7 +216,7 @@ defmodule IMAP do
   def run_cmds(imap, cmds) do
     cmds
     |> Enum.map(&map_cmds/1)
-    |> Enum.each(fn({gen, args}) ->
+    |> Enum.each(fn {gen, args} ->
       case apply(__MODULE__, gen, [imap | args]) do
         :ok      -> :ok
         {:ok, _} -> :ok
@@ -239,8 +243,7 @@ defmodule IMAP do
     %{token_state: token_state, parse_state: parse_state} = tokenizer
 
     {result, token_state, parse_state} = Tokenizer.decode_line(token_state, parse_state)
-    tokenizer = %{tokenizer | token_state: token_state,
-                  parse_state: parse_state}
+    tokenizer = %{tokenizer | token_state: token_state, parse_state: parse_state}
 
     churn_buffer(%{state | tokenizer: tokenizer}, result)
   end
@@ -256,9 +259,9 @@ defmodule IMAP do
   def churn_buffer(%{cmds: cmds} = state, ["*" | resp]) do
     cmds = :gb_trees.values(cmds)
     _ = for cmd <- cmds, do: dispatch(cmd, {:*, resp})
+
     churn_buffer(state)
   end
-
 
   # The IMAP rfc says that we have to account for continuation
   # mode. This ensures that the imap client is aware that we are in
@@ -266,24 +269,30 @@ defmodule IMAP do
   def churn_buffer(%{cmds: cmds} = state, ["+" | resp]) do
     cmds = :gb_trees.values(cmds)
     _ = for cmd <- cmds, do: dispatch(cmd, {:+, resp})
+
     churn_buffer(%{state | +: true})
   end
 
   def churn_buffer(%{cmds: cmds} = state, [tag | resp]) do
     case get_cmd(tag, cmds) do
       {:value, cmd} ->
-        :ok = dispatch(cmd,
-        case resp do
-          ["OK" | rest]  -> {:OK, rest}
-          ["NO" | rest]  -> {:NO, rest}
-          ["BAD" | rest] -> {:BAD, rest}
-        end)
+        :ok =
+          dispatch(
+            cmd,
+            case resp do
+              ["OK" | rest] -> {:OK, rest}
+              ["NO" | rest] -> {:NO, rest}
+              ["BAD" | rest] -> {:BAD, rest}
+            end
+          )
 
         %{state | cmds: del_cmd(tag, cmds)}
+
       :none ->
         Logger.warn(fn ->
           "unknown tag: #{tag}"
         end)
+
         state
     end
   end

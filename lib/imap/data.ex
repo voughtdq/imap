@@ -32,7 +32,7 @@ defmodule IMAP.Data do
   # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
   # SUCH DAMAGE.
 
- def clean_props({:*, [_id, "FETCH", params]}) do
+  def clean_props({:*, [_id, "FETCH", params]}) do
     clean_props(params, [])
   end
 
@@ -56,31 +56,48 @@ defmodule IMAP.Data do
     clean_props(rest, [{:rfc822_size, rfc822_size} | acc])
   end
 
-  def clean_props(["ENVELOPE", [{:string, date}, {:string, subject},
-                                from, sender, reply_to, to, cc, bcc, in_reply_to,
-                                {:string, message_id}] | rest], acc) do
-    envelope = [{:date, date},
-                {:subject, subject},
-                {:from, clean_addresses(from)},
-                {:sender, clean_addresses(sender)},
-                {:reply_to, clean_addresses(reply_to)},
-                {:to, clean_addresses(to)},
-                {:cc, clean_addresses(cc)},
-                {:bcc, clean_addresses(bcc)},
-                {:in_reply_to, clean_addresses(in_reply_to)},
-                {:message_id, message_id}]
+  def clean_props(["ENVELOPE",
+          [
+            {:string, date},
+            {:string, subject},
+            from,
+            sender,
+            reply_to,
+            to,
+            cc,
+            bcc,
+            in_reply_to,
+            {:string, message_id}
+          ]
+          | rest
+        ],
+        acc
+      ) do
+    envelope = [
+      {:date, date},
+      {:subject, subject},
+      {:from, clean_addresses(from)},
+      {:sender, clean_addresses(sender)},
+      {:reply_to, clean_addresses(reply_to)},
+      {:to, clean_addresses(to)},
+      {:cc, clean_addresses(cc)},
+      {:bcc, clean_addresses(bcc)},
+      {:in_reply_to, clean_addresses(in_reply_to)},
+      {:message_id, message_id}
+    ]
+
     clean_props(rest, [{:envelope, envelope} | acc])
   end
 
-  def clean_props(["BODY", :'[', :']', {:string, body} | rest], acc) do
+  def clean_props(["BODY", :"[", :"]", {:string, body} | rest], acc) do
     clean_props(rest, [{:body, body} | acc])
   end
 
-  def clean_props(["BODY", :'[', "TEXT", :']', {:string, body} | rest], acc) do
+  def clean_props(["BODY", :"[", "TEXT", :"]", {:string, body} | rest], acc) do
     clean_props(rest, [{:text_body, body} | acc])
   end
 
-  def clean_props(["BODY", '[', part, :']', {:string, body} | rest], acc) do
+  def clean_props(["BODY", '[', part, :"]", {:string, body} | rest], acc) do
     clean_props(rest, [{"body." <> part, body} | acc])
   end
 
@@ -92,10 +109,27 @@ defmodule IMAP.Data do
     clean_body(body, [])
   end
 
-  def clean_body([{:string, type}, {:string, subtype}, params, id, description,
-                  {:string, encoding}, size | _], []) do
-    [{:type, type}, {:subtype, subtype}, {:params, clean_imap_props(params)},
-     {:id, id}, {:description, description}, {:encoding, encoding}, {:size, size}]
+  def clean_body(
+        [
+          {:string, type},
+          {:string, subtype},
+          params,
+          id,
+          description,
+          {:string, encoding},
+          size | _
+        ],
+        []
+      ) do
+    [
+      {:type, type},
+      {:subtype, subtype},
+      {:params, clean_imap_props(params)},
+      {:id, id},
+      {:description, description},
+      {:encoding, encoding},
+      {:size, size}
+    ]
   end
 
   def clean_body([{:string, multipart_type}], acc) do
@@ -141,17 +175,23 @@ defmodule IMAP.Data do
   def clean_addresses([[raw_name, _, {:string, mailbox}, host] | rest], acc) do
     address = build_address(mailbox, host)
 
-    clean_addresses(rest, [{:address, case raw_name do
-                                        :NIL -> [{:name, ""} | address]
-                                        {:string, name} -> [{:name, name} | address]
-                                      end} | acc])
+    clean_addresses(rest, [
+      {:address,
+       case raw_name do
+         :NIL -> [{:name, ""} | address]
+         {:string, name} -> [{:name, name} | address]
+       end}
+      | acc
+    ])
   end
 
   def build_address(mailbox, host) do
-    domain = case host do
-               {:string, string} -> string
-               _ -> ""
-             end
+    domain =
+      case host do
+        {:string, string} -> string
+        _ -> ""
+      end
+
     [{:email, mailbox <> "@" <> domain}]
   end
 
