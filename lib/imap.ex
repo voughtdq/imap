@@ -145,7 +145,10 @@ defmodule IMAP do
   end
 
   def dispatch_to(ref) do
-    fn(message) -> send(ref, message) end
+    fn(message) ->
+      send(ref, message)
+      :ok
+    end
   end
 
   def cast(server, cmd) do
