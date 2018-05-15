@@ -115,7 +115,7 @@ defmodule IMAP do
   end
 
   def handle_info({:ssl_closed, socket}, %{socket: socket} = state) do
-    {:stop, :normal, state}
+    {:stop, {:error, :ssl_closed}, state}
   end
 
   def handle_info(msg, state) do
