@@ -48,7 +48,8 @@ defmodule IMAP do
              cmds: {0, nil}]
 
   def start_link([connspec, opts]) do
-    GenServer.start_link(__MODULE__, [connspec, opts])
+    {name, opts} = Keyword.pop(opts, :name)
+    GenServer.start_link(__MODULE__, [connspec, opts], name: name)
   end
 
   def init([{socket, host, port} = connspec, opts]) do
