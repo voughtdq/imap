@@ -55,8 +55,11 @@ defmodule IMAP do
   def init([{socket, host, port} = connspec, opts]) do
     startup(self(), Keyword.get(opts, :cmds, []))
 
-    init_callback = Keyword.get(opts, :init_callback, fn x -> x end)
+    if timeout = Keyword.get(opts, :keep_alive_timeout) do
+      Process.send_after(self(), :keep_alive, timeout)
+    end
 
+    init_callback = Keyword.get(opts, :init_callback, fn x -> x end)
     state = %__MODULE__{connspec: connspec, opts: opts}
 
     case socket.connect(host, port, [:binary]) do
@@ -117,6 +120,21 @@ defmodule IMAP do
 
   def handle_info({:ssl_closed, socket}, %{socket: socket} = state) do
     {:stop, {:error, :ssl_closed}, state}
+  end
+
+  def handle_info(:keep_alive, %{opts: opts} = state) do
+    timeout = Keyword.get(opts, :keep_alive_timeout)
+    cmds    = Keyword.get(opts, :keep_alive_cmds)
+    self    = self()
+
+    Logger.debug(fn -> "stayin alive, stayin alive" end)
+
+    spawn(fn ->
+      run_cmds(self, cmds)
+      Process.send_after(self, :keep_alive, timeout)
+    end)
+
+    {:noreply, state}
   end
 
   def handle_info(msg, state) do
@@ -183,31 +201,27 @@ defmodule IMAP do
 
   def startup(imap, cmds) do
     spawn_link(fn ->
-      cmds
-      |> Enum.map(&map_cmds/1)
-      |> Enum.each(fn({gen, args}) ->
-        case apply(__MODULE__, gen, [imap | args]) do
-          :ok      -> :ok
-          {:ok, _} -> :ok
-          {:+, _}  -> :ok
-        end
-      end)
-
+      run_cmds(imap, cmds)
       finished(imap)
     end)
   end
 
-  def dispatch({:cmd, _, opts} = internal, msg) do
-    dispatch(internal, msg, Keyword.get_values(opts, :dispatch))
+  def run_cmds(imap, cmds) do
+    cmds
+    |> Enum.map(&map_cmds/1)
+    |> Enum.each(fn({gen, args}) ->
+      case apply(__MODULE__, gen, [imap | args]) do
+        :ok      -> :ok
+        {:ok, _} -> :ok
+        {:+, _}  -> :ok
+      end
+    end)
   end
 
-  def dispatch(_, _, []) do
+  def dispatch({:cmd, _, opts}, msg) do
+    funs = Keyword.get_values(opts, :dispatch)
+    _ = for fun <- funs, do: fun.(msg)
     :ok
-  end
-
-  def dispatch(internal, msg, [fun | rest]) do
-    :ok = fun.(msg)
-    dispatch(internal, msg, rest)
   end
 
   defp map_cmds({:cmd, {gen, cmd}}) do
@@ -237,10 +251,8 @@ defmodule IMAP do
   end
 
   def churn_buffer(%{cmds: cmds} = state, ["*" | resp]) do
-    :ok = Enum.each(:gb_trees.values(cmds), fn cmd ->
-      dispatch(cmd, {:*, resp})
-    end)
-
+    cmds = :gb_trees.values(cmds)
+    _ = for cmd <- cmds, do: dispatch(cmd, {:*, resp})
     churn_buffer(state)
   end
 
@@ -249,10 +261,8 @@ defmodule IMAP do
   # mode. This ensures that the imap client is aware that we are in
   # continuation mode.
   def churn_buffer(%{cmds: cmds} = state, ["+" | resp]) do
-    :ok = Enum.each(:gb_trees.values(cmds), fn cmd ->
-      dispatch(cmd, {:+, resp})
-    end)
-
+    cmds = :gb_trees.values(cmds)
+    _ = for cmd <- cmds, do: dispatch(cmd, {:+, resp})
     churn_buffer(%{state | +: true})
   end
 
