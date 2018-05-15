@@ -308,8 +308,4 @@ defmodule IMAP do
   defp put_cmd(tag, cmd, cmds) do
     :gb_trees.insert(tag, cmd, cmds)
   end
-
-  defp get_callback(name, opts, default \\ fn x -> x end) do
-    Keyword.get(opts, name, default)
-  end
 end
