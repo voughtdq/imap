@@ -42,6 +42,7 @@ defmodule IMAP do
   defstruct socket: nil,
             connspec: nil,
             +: false,
+            retry_state: nil,
             opts: [],
             tag: 0,
             tokenizer: %Tokenizer{},
@@ -54,13 +55,9 @@ defmodule IMAP do
 
   def init([{socket, host, port} = connspec, opts]) do
     startup(self(), Keyword.get(opts, :cmds, []))
-
-    if timeout = Keyword.get(opts, :keep_alive_timeout) do
-      Process.send_after(self(), :keep_alive, timeout)
-    end
-
+    _ = maybe_keep_alive(opts)
     init_callback = Keyword.get(opts, :init_callback, fn x -> x end)
-    state = %__MODULE__{connspec: connspec, opts: opts}
+    state         = %__MODULE__{connspec: connspec, opts: opts}
 
     case socket.connect(host, port, [:binary]) do
       {:ok, socket} ->
@@ -95,6 +92,39 @@ defmodule IMAP do
     {:stop, :normal, state}
   end
 
+  def handle_cast(:retry, %{retry_state: nil, opts: opts} = state) do
+    max_retries = Keyword.get(opts, :max_retries, 10)
+    max_wait    = Keyword.get(opts, :max_wait, 128) |> :timer.seconds()
+    handle_cast(:retry, %{state | retry_state: {0, max_retries, 0, max_wait}})
+  end
+
+  def handle_cast(:retry, %{retry_state: retry_state, connspec: connspec, opts: opts} = state) do
+    {r, maxr, w, maxw} = retry_state
+    {socket, host, port} = connspec
+
+    case socket.connect(host, port, [:binary]) do
+      {:ok, socket} ->
+        _ = maybe_keep_alive(opts)
+        {:noreply, %{state | retry_state: nil, socket: socket}}
+
+      {:error, _} ->
+        r = r + 1
+        cond do
+          r >= maxr ->
+            {:stop, {:error, :noconnection}, %{state | retry_state: nil}}
+
+          w >= maxw  ->
+            cast_after(self(), :retry, mash(maxw))
+            {:noreply, %{state | retry_state: {r, maxr, w, maxw}}}
+
+          w < maxw ->
+            w = wait_for(r)
+            cast_after(self(), :retry, mash(w))
+            {:noreply, %{state | retry_state: {r, maxr, w, maxw}}}
+        end
+    end
+  end
+
   def handle_cast(request, state) do
     Logger.debug(fn ->
       "unhandled cast: #{inspect(request)}"
@@ -118,7 +148,12 @@ defmodule IMAP do
   end
 
   def handle_info({:ssl_closed, socket}, %{socket: socket} = state) do
-    {:stop, {:error, :ssl_closed}, state}
+    GenServer.cast(self(), :retry)
+    {:noreply, %{state | socket: nil}}
+  end
+
+  def handle_info(:keep_alive, %{socket: nil} = state) do
+    {:noreply, state}
   end
 
   def handle_info(:keep_alive, %{opts: opts} = state) do
@@ -307,5 +342,27 @@ defmodule IMAP do
 
   defp put_cmd(tag, cmd, cmds) do
     :gb_trees.insert(tag, cmd, cmds)
+  end
+
+  defp maybe_keep_alive(opts) do
+    if timeout = Keyword.get(opts, :keep_alive_timeout) do
+      Process.send_after(self(), :keep_alive, timeout)
+    else
+      nil
+    end
+  end
+
+  defp wait_for(interval) when is_integer(interval) do
+    :math.pow(2, interval)
+    |> :erlang.trunc()
+    |> :timer.seconds()
+  end
+
+  defp mash(interval) do
+    interval + :rand.uniform(999)
+  end
+
+  defp cast_after(whom, msg, ms) do
+    Process.send_after(whom, {:'$gen_cast', msg}, ms)
   end
 end
