@@ -68,6 +68,12 @@ defmodule IMAP do
     end
   end
 
+  def handle_cast({:cmd, _, _} = cmd_tup, %{socket: nil} = state) do
+    dispatch(cmd_tup, {:error, {:socket_down, cmd_tup}})
+
+    {:noreply, state}
+  end
+
   def handle_cast({:cmd, cmd, _}, %{+: true, socket: socket} = state) do
     :ok = :ssl.send(socket, cmd_to_data(cmd))
 
@@ -159,7 +165,7 @@ defmodule IMAP do
 
   def handle_info({:ssl_closed, socket}, %{socket: socket} = state) do
     GenServer.cast(self(), :retry)
-    {:noreply, %{state | socket: nil, +: false}}
+    {:noreply, %{state | socket: nil, +: false, cmds: {0, nil}}}
   end
 
   def handle_info(:keep_alive, %{socket: nil} = state) do
