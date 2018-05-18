@@ -104,22 +104,32 @@ defmodule IMAP do
 
     case socket.connect(host, port, [:binary]) do
       {:ok, socket} ->
+        startup(self(), Keyword.get(opts, :cmds, []))
         _ = maybe_keep_alive(opts)
         {:noreply, %{state | retry_state: nil, socket: socket}}
 
       {:error, _} ->
         r = r + 1
+
         cond do
           r >= maxr ->
             {:stop, {:error, :noconnection}, %{state | retry_state: nil}}
 
           w >= maxw  ->
-            cast_after(self(), :retry, mash(maxw))
+            timeout = mash(maxw)
+            Logger.debug(fn ->
+              "retry #{r}/#{maxr} scheduled for #{timeout}ms from now"
+            end)
+            cast_after(self(), :retry, timeout)
             {:noreply, %{state | retry_state: {r, maxr, w, maxw}}}
 
           w < maxw ->
             w = wait_for(r)
-            cast_after(self(), :retry, mash(w))
+            timeout = mash(w)
+            Logger.debug(fn ->
+              "retry #{r}/#{maxr} scheduled for #{timeout}ms from now"
+            end)
+            cast_after(self(), :retry, timeout)
             {:noreply, %{state | retry_state: {r, maxr, w, maxw}}}
         end
     end
