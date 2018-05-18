@@ -159,7 +159,7 @@ defmodule IMAP do
 
   def handle_info({:ssl_closed, socket}, %{socket: socket} = state) do
     GenServer.cast(self(), :retry)
-    {:noreply, %{state | socket: nil}}
+    {:noreply, %{state | socket: nil, +: false}}
   end
 
   def handle_info(:keep_alive, %{socket: nil} = state) do
