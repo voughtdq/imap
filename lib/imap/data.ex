@@ -33,27 +33,27 @@ defmodule IMAP.Data do
   # SUCH DAMAGE.
 
   def clean_props({:*, [_id, "FETCH", params]}) do
-    clean_props(params, [])
+    clean_props(params, %{})
   end
 
   def clean_props([], acc) do
-    {:fetch, Enum.reverse(acc)}
+    {:fetch, acc}
   end
 
   def clean_props(["UID", uid | rest], acc) do
-    clean_props(rest, [{:uid, uid} | acc])
+    clean_props(rest, Map.put(acc, "uid", uid))
   end
 
   def clean_props(["FLAGS", flags | rest], acc) do
-    clean_props(rest, [{:flags, flags} | acc])
+    clean_props(rest, Map.put(acc, "flags", flags))
   end
 
   def clean_props(["INTERNALDATE", {:string, internal_date} | rest], acc) do
-    clean_props(rest, [{:internal_date, internal_date} | acc])
+    clean_props(rest, Map.put(acc, "internal_date", internal_date))
   end
 
   def clean_props(["RFC822.SIZE", rfc822_size | rest], acc) do
-    clean_props(rest, [{:rfc822_size, rfc822_size} | acc])
+    clean_props(rest, Map.put(acc, "rfc822_size", rfc822_size))
   end
 
   def clean_props(["ENVELOPE",
@@ -73,36 +73,36 @@ defmodule IMAP.Data do
         ],
         acc
       ) do
-    envelope = [
-      {:date, date},
-      {:subject, subject},
-      {:from, clean_addresses(from)},
-      {:sender, clean_addresses(sender)},
-      {:reply_to, clean_addresses(reply_to)},
-      {:to, clean_addresses(to)},
-      {:cc, clean_addresses(cc)},
-      {:bcc, clean_addresses(bcc)},
-      {:in_reply_to, clean_addresses(in_reply_to)},
-      {:message_id, message_id}
-    ]
+    envelope = %{
+      "date" => date,
+      "subject" => subject,
+      "from" => clean_addresses(from),
+      "sender" => clean_addresses(sender),
+      "reply_to" => clean_addresses(reply_to),
+      "to" => clean_addresses(to),
+      "cc" => clean_addresses(cc),
+      "bcc" => clean_addresses(bcc),
+      "in_reply_to" => clean_addresses(in_reply_to),
+      "message_id" => message_id
+    }
 
-    clean_props(rest, [{:envelope, envelope} | acc])
+    clean_props(rest, Map.put(acc, "envelope", envelope))
   end
 
   def clean_props(["BODY", :"[", :"]", {:string, body} | rest], acc) do
-    clean_props(rest, [{:body, body} | acc])
+    clean_props(rest, Map.put(acc, "body", body))
   end
 
   def clean_props(["BODY", :"[", "TEXT", :"]", {:string, body} | rest], acc) do
-    clean_props(rest, [{:text_body, body} | acc])
+    clean_props(rest, Map.put(acc, "text_body", body))
   end
 
   def clean_props(["BODY", '[', part, :"]", {:string, body} | rest], acc) do
-    clean_props(rest, [{"body." <> part, body} | acc])
+    clean_props(rest, Map.put(acc, "body."<>part, body))
   end
 
   def clean_props(["BODY", body | rest], acc) do
-    clean_props(rest, [{:body, clean_body(body)} | acc])
+    clean_props(rest, Map.put(acc, "body", clean_body(body)))
   end
 
   def clean_body(body) do
@@ -121,19 +121,22 @@ defmodule IMAP.Data do
         ],
         []
       ) do
-    [
-      {:type, type},
-      {:subtype, subtype},
-      {:params, clean_imap_props(params)},
-      {:id, id},
-      {:description, description},
-      {:encoding, encoding},
-      {:size, size}
-    ]
+    %{
+      "type" => type,
+      "subtype" => subtype,
+      "params" => clean_imap_props(params),
+      "id" => id,
+      "description" => description,
+      "encoding" => encoding,
+      "size" => size
+    }
   end
 
   def clean_body([{:string, multipart_type}], acc) do
-    [{:multipart, multipart_type}, {:parts, Enum.reverse(acc)}]
+    %{
+      "multipart" => multipart_type,
+      "parts" => Enum.reverse(acc)
+    }
   end
 
   def clean_body([head | tail], acc) do
@@ -141,15 +144,15 @@ defmodule IMAP.Data do
   end
 
   def clean_imap_props(props) do
-    clean_imap_props(props, [])
+    clean_imap_props(props, %{})
   end
 
   def clean_imap_props([], acc) do
-    Enum.reverse(acc)
+    acc
   end
 
   def clean_imap_props([{:string, key}, {:string, value} | rest], acc) do
-    clean_imap_props(rest, [{key, value} | acc])
+    clean_imap_props(rest, Map.put(acc, key, value))
   end
 
   def clean_addresses(:NIL) do
